@@ -165,7 +165,7 @@
                 return;
             }
         }
-        currentKey = key;
+      
         currentKey = key;
         const memoryDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'clones', currentKey);
         const initialSnap = await getDoc(memoryDocRef);
@@ -713,4 +713,5 @@
     </div>
 </body>
 </html>
+
 
