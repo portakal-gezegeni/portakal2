@@ -300,15 +300,16 @@
             btn.classList.add('recording');
             icon.className = 'fa-solid fa-microphone-slash';
             respond("Dinliyorum... Konuşmayı bitirince tekrar bas.");
-   } catch (e) {
-    if (e.name === 'NotAllowedError') {
-        respond("Mikrofon izni reddedildi. Tarayıcı ayarlarından izin ver.");
-    } else if (e.name === 'NotFoundError') {
-        respond("Mikrofon bulunamadı. Cihazını kontrol et.");
-    } else {
-        respond("Mikrofon hatası: " + e.message);
-    }
-}
+} catch (e) {
+            if (e.name === 'NotAllowedError') {
+                respond("Mikrofon izni reddedildi. Tarayıcı ayarlarından izin ver.");
+            } else if (e.name === 'NotFoundError') {
+                respond("Mikrofon bulunamadı. Cihazını kontrol et.");
+            } else {
+                respond("Mikrofon hatası: " + e.message);
+            }
+        }
+    };
 
     function refreshMemoryList() {
         const listEl = document.getElementById('memory-list');
@@ -638,4 +639,5 @@
     </div>
 </body>
 </html>
+
 
