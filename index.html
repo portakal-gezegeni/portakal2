@@ -143,7 +143,6 @@
             return;
         }
 
-        // Şifre listesi kontrolü
         const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
         if (passDoc.exists()) {
             const allowedPasswords = passDoc.data().list || [];
@@ -173,7 +172,7 @@
                 refreshMemoryList();
             }
         }, (err) => console.error("Hafıza akış hatası", err));
-        respond("Merhaba! Hoş geldin! Bugün ne öğreniyoruz?");
+        respond("Uyandım... Ama hiçbir şey hatırlamıyorum. Kimim ben? Bana her şeyi öğretmelisin.");
     };
 
     window.startProcess = async () => {
@@ -430,8 +429,8 @@
     };
 
     window.loadPasswordList = async () => {
-        const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
-        const list = passDoc.exists() ? (passDoc.data().list || []) : [];
+        const pwDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
+        const list = pwDoc.exists() ? (pwDoc.data().list || []) : [];
         const el = document.getElementById('pass-list');
         if (!el) return;
         el.innerHTML = list.length > 0
