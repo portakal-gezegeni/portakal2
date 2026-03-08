@@ -411,6 +411,61 @@
 
     window.openVault = () => document.getElementById('vault-modal').classList.remove('hidden');
 
+    window.openPasswordManager = () => {
+        const m = document.createElement('div');
+        m.id = 'pass-manager';
+        m.className = "fixed inset-0 z-[4000] flex items-center justify-center bg-black/90 p-4";
+        m.innerHTML = `
+            <div class="bg-slate-900 p-6 rounded-2xl max-w-sm w-full border border-orange-500/30">
+                <h3 class="text-orange-500 font-bold mb-4">Şifre Yönetimi</h3>
+                <div class="flex gap-2 mb-4">
+                    <input id="new-pass-input" type="text" placeholder="Yeni şifre..." class="flex-grow bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none">
+                    <button onclick="window.addPassword()" class="px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm">EKLE</button>
+                </div>
+                <div id="pass-list" class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar mb-4"></div>
+                <button onclick="document.getElementById('pass-manager').remove()" class="w-full py-2 bg-slate-800 text-white rounded-xl font-bold text-sm">KAPAT</button>
+            </div>`;
+        document.body.appendChild(m);
+        window.loadPasswordList();
+    };
+
+    window.loadPasswordList = async () => {
+        const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
+        const list = passDoc.exists() ? (passDoc.data().list || []) : [];
+        const el = document.getElementById('pass-list');
+        if (!el) return;
+        el.innerHTML = list.length > 0
+            ? list.map((p, i) => `
+                <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl border border-white/5">
+                    <span class="text-sm text-white font-mono">${p}</span>
+                    <button onclick="window.deletePassword(${i})" class="text-red-400 hover:text-red-300 text-xs">SİL</button>
+                </div>`).join('')
+            : '<p class="text-slate-500 text-xs text-center py-2">Henüz şifre yok, herkes girebilir.</p>';
+    };
+
+    window.addPassword = async () => {
+        const input = document.getElementById('new-pass-input');
+        const val = input.value.trim();
+        if (!val) return;
+        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords');
+        const snap = await getDoc(ref);
+        const list = snap.exists() ? (snap.data().list || []) : [];
+        if (list.includes(val)) return showModal("Hata", "Bu şifre zaten var.");
+        list.push(val);
+        await setDoc(ref, { list });
+        input.value = '';
+        window.loadPasswordList();
+    };
+
+    window.deletePassword = async (index) => {
+        const ref = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords');
+        const snap = await getDoc(ref);
+        const list = snap.exists() ? (snap.data().list || []) : [];
+        list.splice(index, 1);
+        await setDoc(ref, { list });
+        window.loadPasswordList();
+    };
+
     function startAdminListener() {
         const adminList = document.getElementById('admin-clone-list');
         onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'clones'), (snap) => {
@@ -527,6 +582,9 @@
                     </button>
                     <button onclick="window.changeAdminPass()" class="px-4 py-2 bg-white/5 border border-white/10 text-white font-bold rounded-xl text-xs hover:bg-white/10 transition-all">
                         <i class="fa-solid fa-shield-halved mr-1 text-orange-500"></i>ŞİFRE
+                    </button>
+                    <button onclick="window.openPasswordManager()" class="px-4 py-2 bg-white/5 border border-white/10 text-white font-bold rounded-xl text-xs hover:bg-white/10 transition-all">
+                        <i class="fa-solid fa-users mr-1 text-orange-500"></i>ŞİFRELER
                     </button>
                     <button onclick="logout()" class="px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs">ÇIKIŞ</button>
                 </div>
