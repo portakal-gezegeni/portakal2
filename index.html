@@ -154,7 +154,18 @@
                 return;
             }
         }
-
+// Şifre listesi kontrolü
+        const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
+        if (passDoc.exists()) {
+            const allowedPasswords = passDoc.data().list || [];
+            if (allowedPasswords.length > 0 && !allowedPasswords.includes(key)) {
+                showModal("Hata", "Geçersiz şifre. Lütfen size verilen şifreyi girin.");
+                btn.innerText = "BAŞLAT";
+                btn.disabled = false;
+                return;
+            }
+        }
+        currentKey = key;
         currentKey = key;
         const memoryDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'clones', currentKey);
         const initialSnap = await getDoc(memoryDocRef);
@@ -702,3 +713,4 @@
     </div>
 </body>
 </html>
+
