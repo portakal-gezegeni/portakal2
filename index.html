@@ -144,14 +144,12 @@
         }
 
         const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
-        if (passDoc.exists()) {
-            const allowedPasswords = passDoc.data().list || [];
-            if (allowedPasswords.length > 0 && !allowedPasswords.includes(key)) {
-                showModal("Hata", "Geçersiz şifre. Lütfen size verilen şifreyi girin.");
-                btn.innerText = "BAŞLAT";
-                btn.disabled = false;
-                return;
-            }
+        const allowedPasswords = passDoc.exists() ? (passDoc.data().list || []) : [];
+        if (!allowedPasswords.includes(key)) {
+            showModal("Hata", "Geçersiz şifre. Lütfen size verilen şifreyi girin.");
+            btn.innerText = "BAŞLAT";
+            btn.disabled = false;
+            return;
         }
 
         currentKey = key;
@@ -172,7 +170,7 @@
                 refreshMemoryList();
             }
         }, (err) => console.error("Hafıza akış hatası", err));
-        respond("Uyandım... Ama hiçbir şey hatırlamıyorum. Kimim ben? Bana her şeyi öğretmelisin.");
+        respond("Merhaba! Hoş geldin! Bugün ne öğreniyoruz?");
     };
 
     window.startProcess = async () => {
@@ -439,7 +437,7 @@
                     <span class="text-sm text-white font-mono">${p}</span>
                     <button onclick="window.deletePassword(${i})" class="text-red-400 hover:text-red-300 text-xs">SİL</button>
                 </div>`).join('')
-            : '<p class="text-slate-500 text-xs text-center py-2">Henüz şifre yok, herkes girebilir.</p>';
+            : '<p class="text-slate-500 text-xs text-center py-2">Henüz şifre yok.</p>';
     };
 
     window.addPassword = async () => {
