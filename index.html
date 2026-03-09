@@ -269,7 +269,7 @@
         document.getElementById('img-input').value = '';
     };
 
-    window.toggleMic = async () => {
+   window.toggleMic = async () => {
         const btn = document.getElementById('mic-btn');
         const icon = document.getElementById('mic-icon');
         if (isRecording) {
@@ -281,17 +281,18 @@
         }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+            mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
             audioChunks = [];
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
                 stream.getTracks().forEach(t => t.stop());
                 const apiKey = getNextKey();
                 if (!apiKey) return;
                 try {
                     const formData = new FormData();
-                    formData.append('file', audioBlob, 'audio.webm');
+                    formData.append('file', audioBlob, 'audio.' + (mediaRecorder.mimeType.includes('mp4') ? 'mp4' : 'webm'));
                     formData.append('model', 'whisper-large-v3');
                     const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
                         method: 'POST',
@@ -707,4 +708,5 @@
     </div>
 </body>
 </html>
+
 
