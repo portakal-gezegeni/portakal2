@@ -216,7 +216,6 @@
             const res = JSON.parse(data.choices[0].message.content);
             const memoryDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'clones', currentKey);
 
-            // Resim geldiyse otomatik hafızaya yaz
             if (selectedImageBase64 && res.response) {
                 res.type = "learn";
                 if (!res.fact) res.fact = "Görsel içerik görüldü: " + res.response.substring(0, 60);
@@ -269,49 +268,91 @@
         document.getElementById('img-input').value = '';
     };
 
-   window.toggleMic = async () => {
+    // ---- DÜZELTILMIŞ MİKROFON KODU ----
+    window.toggleMic = async () => {
         const btn = document.getElementById('mic-btn');
         const icon = document.getElementById('mic-icon');
+
         if (isRecording) {
+            mediaRecorder.requestData(); // Bekleyen veriyi zorla al
             mediaRecorder.stop();
             isRecording = false;
             btn.classList.remove('recording');
             icon.className = 'fa-solid fa-microphone';
             return;
         }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+
+            // Desteklenen format sırasıyla dene
+            let mimeType = '';
+            const formats = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+            for (const fmt of formats) {
+                if (MediaRecorder.isTypeSupported(fmt)) { mimeType = fmt; break; }
+            }
+
             mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
             audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
                 stream.getTracks().forEach(t => t.stop());
+
+                if (audioChunks.length === 0) {
+                    respond("Ses kaydedilemedi, tekrar dene.");
+                    return;
+                }
+
+                const finalMime = mimeType || 'audio/webm';
+                const audioBlob = new Blob(audioChunks, { type: finalMime });
+
+                if (audioBlob.size < 1000) {
+                    respond("Ses çok kısa, biraz daha uzun konuş.");
+                    return;
+                }
+
                 const apiKey = getNextKey();
-                if (!apiKey) return;
+                if (!apiKey) { respond("API anahtarı bulunamadı!"); return; }
+
+                respond("Anlıyorum...");
+
                 try {
+                    const ext = finalMime.includes('mp4') ? 'mp4' : finalMime.includes('ogg') ? 'ogg' : 'webm';
                     const formData = new FormData();
-                    formData.append('file', audioBlob, 'audio.' + ((mediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm'));
+                    formData.append('file', audioBlob, `audio.${ext}`);
                     formData.append('model', 'whisper-large-v3');
+                    formData.append('language', 'tr');
+
                     const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${apiKey}` },
                         body: formData
                     });
+
                     const data = await resp.json();
-                    if (data.text) {
-                        document.getElementById('userInput').value = data.text;
+
+                    if (data.text && data.text.trim()) {
+                        document.getElementById('userInput').value = data.text.trim();
                         startProcess();
+                    } else {
+                        respond("Sesi anlayamadım, tekrar dene.");
                     }
-                } catch (e) { respond("Sesi anlayamadım."); }
+                } catch (e) {
+                    respond("Bağlantı hatası, tekrar dene.");
+                }
             };
-            mediaRecorder.start();
+
+            mediaRecorder.start(100); // Her 100ms'de veri topla - kritik düzeltme
             isRecording = true;
             btn.classList.add('recording');
             icon.className = 'fa-solid fa-microphone-slash';
             respond("Dinliyorum... Konuşmayı bitirince tekrar bas.");
-    } catch (e) {
+
+        } catch (e) {
             if (e.name === 'NotAllowedError') {
                 respond("Mikrofon izni reddedildi. Tarayıcı ayarlarından izin ver.");
             } else if (e.name === 'NotFoundError') {
@@ -321,6 +362,7 @@
             }
         }
     };
+    // ---- MİKROFON KODU SONU ----
 
     function refreshMemoryList() {
         const listEl = document.getElementById('memory-list');
@@ -564,7 +606,6 @@
 <body>
     <div class="space-bg" id="star-container"></div>
 
-    <!-- Top Bar -->
     <div class="top-bar">
         <div class="bg-black/40 backdrop-blur-md border border-white/10 px-3 py-2 rounded-2xl text-xs font-bold text-orange-400">
             <i class="fa-solid fa-cloud-bolt mr-1"></i><span id="timer-val">30:00</span>
@@ -574,7 +615,6 @@
         </button>
     </div>
 
-    <!-- Admin Panel -->
     <div id="admin-panel" class="fixed inset-0 bg-slate-950/98 z-[2500] hidden flex flex-col p-5 overflow-y-auto custom-scrollbar">
         <div class="max-w-4xl mx-auto w-full">
             <div class="flex flex-col gap-4 mb-8 border-b border-white/10 pb-6 pt-2">
@@ -599,7 +639,6 @@
         </div>
     </div>
 
-    <!-- Vault Modal -->
     <div id="vault-modal" class="fixed inset-0 bg-black/90 z-[3000] hidden flex items-center justify-center p-5">
         <div class="bg-slate-900 p-6 rounded-[2rem] max-w-sm w-full border border-orange-500/30 text-center">
             <div class="w-14 h-14 bg-orange-600 rounded-full flex items-center justify-center text-white mx-auto mb-5">
@@ -615,7 +654,6 @@
         </div>
     </div>
 
-    <!-- Auth Overlay -->
     <div id="auth-overlay" class="fixed inset-0 bg-slate-950 z-[2000] flex items-center justify-center p-6">
         <div class="max-w-sm w-full text-center">
             <div class="flex justify-center mb-8">
@@ -642,10 +680,8 @@
         </div>
     </div>
 
-    <!-- Memory Overlay -->
     <div id="memory-overlay" onclick="toggleMemory()" style="display:none; position:fixed; inset:0; z-index:4999; background:rgba(0,0,0,0.5);"></div>
 
-    <!-- Memory Panel -->
     <div class="memory-panel" id="memory-panel">
         <div class="memory-header">
             <div class="memory-header-left">
@@ -660,7 +696,6 @@
         <div id="memory-list" class="overflow-y-auto space-y-2 flex-grow pr-1 custom-scrollbar"></div>
     </div>
 
-    <!-- Main Chat Stage -->
     <div class="main-stage">
         <button class="absolute top-3 left-3 z-50 p-3 bg-orange-600 rounded-2xl text-white shadow-lg" onclick="toggleMemory()">
             <i class="fa-solid fa-brain"></i>
@@ -684,7 +719,6 @@
         </div>
     </div>
 
-    <!-- Resim önizleme barı -->
     <div class="img-preview-bar" id="img-preview-bar">
         <img id="preview-img" src="" alt="seçilen resim">
         <div style="flex:1;">
@@ -694,7 +728,6 @@
         <button onclick="clearImage()" style="background:rgba(239,68,68,0.2);border:none;color:#ef4444;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;flex-shrink:0;">✕</button>
     </div>
 
-    <!-- Input Area -->
     <div class="input-area">
         <button class="icon-btn" id="mic-btn" onclick="toggleMic()">
             <i class="fa-solid fa-microphone" id="mic-icon"></i>
@@ -708,7 +741,3 @@
     </div>
 </body>
 </html>
-
-
-
-
