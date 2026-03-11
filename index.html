@@ -278,7 +278,7 @@
             mediaRecorder.stop();
             isRecording = false;
             btn.classList.remove('recording');
-            icon.className = 'fa-solid fa-microphone';
+            icon.setAttribute('class', 'fa-solid fa-microphone');
             return;
         }
 
@@ -349,7 +349,7 @@
             mediaRecorder.start(100); // Her 100ms'de veri topla - kritik düzeltme
             isRecording = true;
             btn.classList.add('recording');
-            icon.className = 'fa-solid fa-microphone-slash';
+            icon.setAttribute('class', 'fa-solid fa-microphone-slash');
             respond("Dinliyorum... Konuşmayı bitirince tekrar bas.");
 
         } catch (e) {
