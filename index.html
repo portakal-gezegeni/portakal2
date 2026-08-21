@@ -9,7 +9,7 @@
     <script type="module">
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
  const firebaseConfig = {
@@ -26,7 +26,7 @@
     const db = getFirestore(app);
 
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'portakal-klon-v5';
-    let ADMIN_KEY = "admin.123";
+    const ADMIN_EMAIL = "admin@portakal.com"; // Firebase Authentication'da oluşturduğun admin hesabının emaili
     let memories = [];
     let chatHistory = [];
     let isBusy = false;
@@ -43,24 +43,35 @@
     // ve /api/chat.js ile /api/transcribe.js üzerinden kullanılıyor.
     // Tarayıcı hiçbir zaman gerçek anahtarı görmüyor.
 
-    const loadConfigs = async () => {
-        try {
-            const adminDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'admin'));
-            if (adminDoc.exists()) ADMIN_KEY = adminDoc.data().password || "admin.123.";
-        } catch (e) { console.error("Konfigürasyon okuma hatası"); }
+    window.toggleAdminLogin = () => {
+        const box = document.getElementById('admin-login-box');
+        box.classList.toggle('hidden');
     };
 
-    window.changeAdminPass = async () => {
-        const newPass = prompt("Yeni Yönetici şifresini belirleyin:");
-        if (newPass === null) return;
-        const trimmedPass = newPass.trim();
-        if (trimmedPass.length >= 4) {
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'admin'), { password: trimmedPass });
-                ADMIN_KEY = trimmedPass;
-                showModal("Başarılı", "Yönetici şifresi güncellendi.");
-            } catch (e) { showModal("Hata", "Şifre güncellenemedi."); }
-        } else { showModal("Hata", "Şifre en az 4 karakter olmalı."); }
+    window.loginAdmin = async () => {
+        const email = document.getElementById('adminEmail').value.trim();
+        const pass = document.getElementById('adminPassword').value;
+        if (!email || !pass) return showModal("Hata", "Email ve şifre gerekli.");
+
+        const btn = document.querySelector('.btn-admin-login');
+        btn.innerText = "GİRİŞ YAPILIYOR...";
+        btn.disabled = true;
+
+        try {
+            await signInWithEmailAndPassword(auth, email, pass);
+            isAdmin = true;
+            document.getElementById('auth-overlay').style.display = 'none';
+            document.getElementById('admin-panel').classList.remove('hidden');
+            startAdminListener();
+        } catch (e) {
+            showModal("Hata", "Yönetici girişi başarısız. Email veya şifre yanlış.");
+            btn.innerText = "YÖNETİCİ GİRİŞİ";
+            btn.disabled = false;
+        }
+    };
+
+    window.changeAdminPass = () => {
+        showModal("Bilgi", "Yönetici şifresini değiştirmek için Firebase Console → Authentication → Users kısmına git, mevcut admin kullanıcısını sil ve aynı email ile yeni bir şifreyle tekrar oluştur.");
     };
 
     window.deleteClone = async (id) => {
@@ -117,16 +128,16 @@
             btn.disabled = false;
             return;
         }
-        await loadConfigs();
-        if (key === ADMIN_KEY) {
-            isAdmin = true;
-            document.getElementById('auth-overlay').style.display = 'none';
-            document.getElementById('admin-panel').classList.remove('hidden');
-            startAdminListener();
+        let passDoc;
+        try {
+            passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
+        } catch (e) {
+            console.error("Şifre listesi okunamadı:", e);
+            showModal("Hata", "Sunucu bağlantı hatası, tekrar dene.");
+            btn.innerText = "BAŞLAT";
+            btn.disabled = false;
             return;
         }
-
-        const passDoc = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords'));
         const allowedPasswords = passDoc.exists() ? (passDoc.data().list || []) : [];
         if (!allowedPasswords.includes(key)) {
             showModal("Hata", "Geçersiz şifre. Lütfen size verilen şifreyi girin.");
@@ -364,7 +375,7 @@
         }, 1000);
     }
 
-    window.logout = () => { location.reload(); };
+    window.logout = () => { signOut(auth).finally(() => location.reload()); };
 
     function respond(text) {
         const bubble = document.getElementById('chat-bubble');
@@ -643,6 +654,12 @@
                     </span>
                 </label>
                 <button class="btn-start w-full bg-orange-600 p-4 rounded-2xl font-bold text-base text-white" onclick="loadClone()">BAŞLAT</button>
+                <button type="button" onclick="toggleAdminLogin()" class="w-full text-xs text-slate-500 hover:text-slate-300 underline pt-2">Yönetici misin? Buradan gir</button>
+                <div id="admin-login-box" class="hidden space-y-3 pt-2 border-t border-white/10 mt-2">
+                    <input type="email" id="adminEmail" placeholder="Yönetici Email" class="w-full bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none focus:border-orange-500">
+                    <input type="password" id="adminPassword" placeholder="Yönetici Şifresi" class="w-full bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none focus:border-orange-500">
+                    <button class="btn-admin-login w-full bg-slate-700 p-3 rounded-xl font-bold text-sm text-white" onclick="loginAdmin()">YÖNETİCİ GİRİŞİ</button>
+                </div>
             </div>
         </div>
     </div>
