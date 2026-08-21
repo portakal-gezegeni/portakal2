@@ -313,8 +313,6 @@
                     return;
                 }
 
-                respond("Anlıyorum...");
-
                 try {
                     const ext = finalMime.includes('mp4') ? 'mp4' : finalMime.includes('ogg') ? 'ogg' : 'webm';
                     const formData = new FormData();
@@ -345,7 +343,6 @@
             isRecording = true;
             btn.classList.add('recording');
             icon.setAttribute('class', 'fa-solid fa-microphone-slash');
-            respond("Dinliyorum... Konuşmayı bitirince tekrar bas.");
 
         } catch (e) {
             if (e.name === 'NotAllowedError') {
