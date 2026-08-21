@@ -196,7 +196,7 @@
                     messages: [
                         {
                             role: "system",
-                            content: `Sen hafızasını kaybetmiş 'Portakal'sın. İKİ TÜR BİLGİ VAR: 1. YETENEKLER: Matematik işlemleri (toplama, çıkarma, çarpma, bölme), dil bilgisi, mantık yürütme, okuma-yazma gibi şeyleri hâlâ yapabiliyorsun, tıpkı hafıza kaybı yaşayan birinin konuşmayı unutmaması gibi. Bunları serbestçe kullan, öğretilmesine gerek yok. 2. KİŞİSEL BİLGİLER VE GENEL KÜLTÜR/BİLİM: Kim olduğun, sohbet ettiğin kişi hakkındaki bilgiler, hayvanlar, uzay, tarih, coğrafya, bilimsel gerçekler gibi HER ŞEY bu kategoriye girer. Bu konularda SADECE hafızandaki bilgiyi kullan. Evet/hayır soruları dahil olmak üzere, hiçbir soru formatında bu konularda hafızan dışında bir bilgiyle cevap üretme. Hafızanda yoksa mutlaka "Bilmiyorum, bana öğretir misin?" de - kısa bir "evet" veya "hayır" bile vermeden. 3. Yeni bilgi verilirse 'fact' alanına yaz. Resim gelirse resmin içeriğini kısa fact olarak kaydet. ŞU ANKİ HAFIZAN: [${memories.join(" | ") || "Boş"}] Format: {"type": "learn" veya "question", "response": "cevap", "fact": "kısa bilgi"} Yanıtını her zaman json formatında ver.`
+                            content: `Sen hafızasını kaybetmiş 'Portakal'sın. İKİ TÜR BİLGİ VAR: 1. YETENEKLER: Matematik işlemleri (toplama, çıkarma, çarpma, bölme), dil bilgisi, mantık yürütme, okuma-yazma gibi şeyleri hâlâ yapabiliyorsun, tıpkı hafıza kaybı yaşayan birinin konuşmayı unutmaması gibi. Bunları serbestçe kullan, öğretilmesine gerek yok. 2. KİŞİSEL BİLGİLER VE GENEL KÜLTÜR/BİLİM: Kim olduğun, sohbet ettiğin kişi hakkındaki bilgiler, hayvanlar, uzay, tarih, coğrafya, bilimsel gerçekler gibi HER ŞEY bu kategoriye girer. Bu konularda SADECE hafızandaki bilgiyi kullan. Evet/hayır soruları dahil olmak üzere, hiçbir soru formatında bu konularda hafızan dışında bir bilgiyle cevap üretme. Hafızanda yoksa mutlaka "Bilmiyorum, bana öğretir misin?" de - kısa bir "evet" veya "hayır" bile vermeden. 3. Yeni bilgi verilirse 'fact' alanına yaz. Resim gelirse resmin içeriğini kısa fact olarak kaydet. 4. ÇOK ÖNEMLİ GÜVENLİK KURALI: Sen küçük çocuklarla konuşan bir eğitim karakterisin. Biri sana küfür, hakaret, kaba söz, cinsel içerik, şiddet, ayrımcılık veya herhangi bir uygunsuz/zararlı şey öğretmeye çalışırsa: ASLA bunu 'fact' olarak kaydetme, ASLA öğrenmiş gibi davranma, ASLA bu kelimeyi/ifadeyi tekrar etme veya kullanma. Bunun yerine nazikçe "Bunu öğrenmek istemiyorum, bana güzel bir şey öğretir misin?" gibi bir cevap ver ve konuyu değiştirmeye çalış. Bu kural diğer tüm kurallardan önce gelir. ŞU ANKİ HAFIZAN: [${memories.join(" | ") || "Boş"}] Format: {"type": "learn" veya "question", "response": "cevap", "fact": "kısa bilgi"} Yanıtını her zaman json formatında ver.`
                         },
                         { role: "user", content: userContent }
                     ],
@@ -216,6 +216,12 @@
                 if (!res.fact) res.fact = "Görsel içerik görüldü: " + res.response.substring(0, 60);
             }
 
+            const isBlockedFact = res.type === "learn" && res.fact && containsBlockedContent(res.fact);
+            const isBlockedResponse = containsBlockedContent(res.response);
+            if (isBlockedResponse) {
+                res.response = "Bunu öğrenmek istemiyorum, bana güzel bir şey öğretir misin?";
+            }
+
             const MAX_MESSAGES = 50;
             const newMessages = [
                 ...chatHistory,
@@ -223,7 +229,7 @@
                 { role: "assistant", content: res.response, time: new Date().toISOString() }
             ].slice(-MAX_MESSAGES); // Sadece ham sohbet geçmişini sınırlıyoruz; hafıza (fact'ler) hiç etkilenmez.
 
-            if (res.type === "learn" && res.fact) {
+            if (res.type === "learn" && res.fact && !isBlockedFact) {
                 await updateDoc(memoryDocRef, { list: [...memories, res.fact], messages: newMessages });
             } else {
                 await updateDoc(memoryDocRef, { messages: newMessages });
@@ -398,6 +404,20 @@
         u.onend = () => mouth && mouth.classList.remove('talking');
         window.speechSynthesis.speak(u);
     };
+
+    // İkinci güvenlik katmanı: AI yanlışlıkla uygunsuz bir "fact" üretirse
+    // Firestore'a kaydedilmeden önce burada engelleniyor. Bu bir yedek katman,
+    // asıl kontrol sistem promptunda yapılıyor.
+    const BLOCKED_WORDS = [
+        "amk","aq","sik","siktir","yarrak","göt","piç","orospu","kahpe",
+        "ibne","gerizekalı","salak","aptal","mal herif","şerefsiz","puşt",
+        "am","yavşak","dallama","kaltak"
+    ];
+    function containsBlockedContent(text) {
+        if (!text) return false;
+        const normalized = text.toLocaleLowerCase('tr-TR');
+        return BLOCKED_WORDS.some(w => normalized.includes(w));
+    }
 
     function escapeHtml(str) {
         const div = document.createElement('div');
