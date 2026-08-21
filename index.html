@@ -74,14 +74,15 @@
         showModal("Bilgi", "Yönetici şifresini değiştirmek için Firebase Console → Authentication → Users kısmına git, mevcut admin kullanıcısını sil ve aynı email ile yeni bir şifreyle tekrar oluştur.");
     };
 
-    window.deleteClone = async (id) => {
-        if (!id) return;
+    window.deleteClone = async (encodedId) => {
+        if (!encodedId) return;
+        const id = decodeURIComponent(encodedId);
         const modal = document.createElement('div');
         modal.className = "fixed inset-0 z-[6000] flex items-center justify-center bg-black/90 p-4";
         modal.innerHTML = `
             <div class="bg-slate-900 p-6 rounded-2xl max-w-xs w-full text-center border border-red-500/30">
                 <h3 class="text-red-500 font-bold mb-2">Klonu Sil</h3>
-                <p class="text-xs text-slate-300 mb-4"><span class="font-bold text-white">${id}</span> klonu kalıcı silinecek.</p>
+                <p class="text-xs text-slate-300 mb-4"><span class="font-bold text-white">${escapeHtml(id)}</span> klonu kalıcı silinecek.</p>
                 <div class="flex gap-2">
                     <button id="cancel-btn" class="w-1/2 py-2 bg-slate-800 rounded-xl text-white font-bold text-sm">İPTAL</button>
                     <button id="confirm-btn" class="w-1/2 py-2 bg-red-600 rounded-xl text-white font-bold text-sm">SİL</button>
@@ -98,7 +99,8 @@
         };
     };
 
-    window.deleteMemoryItem = async (cloneId, index) => {
+    window.deleteMemoryItem = async (encodedCloneId, index) => {
+        const cloneId = decodeURIComponent(encodedCloneId);
         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'clones', cloneId);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
@@ -214,11 +216,12 @@
                 if (!res.fact) res.fact = "Görsel içerik görüldü: " + res.response.substring(0, 60);
             }
 
+            const MAX_MESSAGES = 50;
             const newMessages = [
                 ...chatHistory,
                 { role: "user", content: text || "[resim]", time: new Date().toISOString() },
                 { role: "assistant", content: res.response, time: new Date().toISOString() }
-            ];
+            ].slice(-MAX_MESSAGES); // Sadece ham sohbet geçmişini sınırlıyoruz; hafıza (fact'ler) hiç etkilenmez.
 
             if (res.type === "learn" && res.fact) {
                 await updateDoc(memoryDocRef, { list: [...memories, res.fact], messages: newMessages });
@@ -359,7 +362,7 @@
     function refreshMemoryList() {
         const listEl = document.getElementById('memory-list');
         listEl.innerHTML = memories.length > 0
-            ? memories.slice().reverse().map(m => `<div class="p-3 bg-white/5 rounded-lg text-xs mb-2 border-l-2 border-orange-500 animate-fadeIn">${m}</div>`).join("")
+            ? memories.slice().reverse().map(m => `<div class="p-3 bg-white/5 rounded-lg text-xs mb-2 border-l-2 border-orange-500 animate-fadeIn">${escapeHtml(m)}</div>`).join("")
             : `<div class="text-slate-500 text-xs text-center py-4">Beynim şu an bomboş...</div>`;
         document.getElementById('mem-count').innerText = memories.length;
     }
@@ -398,6 +401,12 @@
         u.onend = () => mouth && mouth.classList.remove('talking');
         window.speechSynthesis.speak(u);
     };
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = String(str ?? '');
+        return div.innerHTML;
+    }
 
     function showModal(title, text) {
         const m = document.createElement('div');
@@ -520,10 +529,10 @@
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-4">
                         <div>
-                            <h3 class="text-orange-500 font-black text-xl tracking-tight">#${d.id}</h3>
+                            <h3 class="text-orange-500 font-black text-xl tracking-tight">#${escapeHtml(d.id)}</h3>
                             <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Klon Hafızası</p>
                         </div>
-                        <button onclick="window.deleteClone('${d.id}')" class="px-4 py-2 bg-red-600/10 text-red-500 text-xs rounded-xl font-bold border border-red-500/20 hover:bg-red-600 hover:text-white transition-all">
+                        <button onclick="window.deleteClone('${encodeURIComponent(d.id)}')" class="px-4 py-2 bg-red-600/10 text-red-500 text-xs rounded-xl font-bold border border-red-500/20 hover:bg-red-600 hover:text-white transition-all">
                             <i class="fa-solid fa-trash-can mr-2"></i>KLONU SİL
                         </button>
                     </div>
@@ -531,8 +540,8 @@
                     <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2 mb-4">
                         ${cloneMemories.length > 0 ? cloneMemories.map((m, idx) => `
                             <div class="flex justify-between items-center gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                                <span class="text-xs text-slate-300 flex-grow">${m}</span>
-                                <button onclick="window.deleteMemoryItem('${d.id}', ${idx})" class="text-slate-500 hover:text-red-400 transition-colors">
+                                <span class="text-xs text-slate-300 flex-grow">${escapeHtml(m)}</span>
+                                <button onclick="window.deleteMemoryItem('${encodeURIComponent(d.id)}', ${idx})" class="text-slate-500 hover:text-red-400 transition-colors">
                                     <i class="fa-solid fa-xmark"></i>
                                 </button>
                             </div>`).join('') : '<p class="text-center text-xs text-slate-600 py-2 italic">Hafıza boş.</p>'}
