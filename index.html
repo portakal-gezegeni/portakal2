@@ -141,7 +141,7 @@
             return;
         }
         const allowedPasswords = passDoc.exists() ? (passDoc.data().list || []) : [];
-        if (!allowedPasswords.includes(key)) {
+        if (!allowedPasswords.some(item => getPassValue(item) === key)) {
             showModal("Hata", "Geçersiz şifre. Lütfen size verilen şifreyi girin.");
             btn.innerText = "BAŞLAT";
             btn.disabled = false;
@@ -169,11 +169,17 @@
         respond("Merhaba! Hoş geldin! Bugün ne öğreniyoruz?");
     };
 
+    let lastMessageTime = 0;
+    const MIN_MESSAGE_INTERVAL = 1200; // ms - art arda çok hızlı mesaj göndermeyi engeller
+
     window.startProcess = async () => {
         if (isBusy || !currentKey) return;
+        const now = Date.now();
+        if (now - lastMessageTime < MIN_MESSAGE_INTERVAL) return; // çok hızlı gönderim, sessizce yok say
         const input = document.getElementById('userInput');
         const text = input.value.trim();
         if (!text && !selectedImageBase64) return;
+        lastMessageTime = now;
         isBusy = true;
         document.querySelector('.btn-send').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
         try {
@@ -220,6 +226,17 @@
             const isBlockedResponse = containsBlockedContent(res.response);
             if (isBlockedResponse) {
                 res.response = "Bunu öğrenmek istemiyorum, bana güzel bir şey öğretir misin?";
+            }
+            if (isBlockedFact || isBlockedResponse) {
+                try {
+                    const logRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'moderation_logs'));
+                    await setDoc(logRef, {
+                        cloneId: currentKey,
+                        attemptedText: (res.fact || text || '').toString().slice(0, 300),
+                        userMessage: (text || '').toString().slice(0, 300),
+                        time: new Date().toISOString()
+                    });
+                } catch (e) { console.error("Denetim kaydı yazılamadı:", e); }
             }
 
             const MAX_MESSAGES = 50;
@@ -371,8 +388,13 @@
     }
 
     function startTimer() {
+        let sessionWarningShown = false;
         timerInterval = setInterval(() => {
             if (timeLeft <= 0) { logout(); return; }
+            if (timeLeft === 60 && !sessionWarningShown) {
+                sessionWarningShown = true;
+                respond("Oturumun 1 dakika içinde sona erecek!");
+            }
             timeLeft--;
             const mins = Math.floor(timeLeft / 60);
             const secs = timeLeft % 60;
@@ -475,6 +497,14 @@
         overlay.style.display = panel.classList.contains('active') ? 'block' : 'none';
     };
 
+    // Şifre listesindeki bir öğe eski (düz metin) veya yeni ({password, label}) formatta olabilir.
+    function getPassValue(item) {
+        return (typeof item === 'object' && item !== null) ? item.password : item;
+    }
+    function getPassLabel(item) {
+        return (typeof item === 'object' && item !== null && item.label) ? item.label : null;
+    }
+
     window.openPasswordManager = () => {
         const m = document.createElement('div');
         m.id = 'pass-manager';
@@ -482,9 +512,10 @@
         m.innerHTML = `
             <div class="bg-slate-900 p-6 rounded-2xl max-w-sm w-full border border-orange-500/30">
                 <h3 class="text-orange-500 font-bold mb-4">Şifre Yönetimi</h3>
-                <div class="flex gap-2 mb-4">
-                    <input id="new-pass-input" type="text" placeholder="Yeni şifre..." class="flex-grow bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none">
-                    <button onclick="window.addPassword()" class="px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm">EKLE</button>
+                <div class="space-y-2 mb-4">
+                    <input id="new-pass-input" type="text" placeholder="Yeni şifre..." class="w-full bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none">
+                    <input id="new-pass-label-input" type="text" placeholder="İsim (opsiyonel, örn: Ali)" class="w-full bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none">
+                    <button onclick="window.addPassword()" class="w-full px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm">EKLE</button>
                 </div>
                 <div id="pass-list" class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar mb-4"></div>
                 <button onclick="document.getElementById('pass-manager').remove()" class="w-full py-2 bg-slate-800 text-white rounded-xl font-bold text-sm">KAPAT</button>
@@ -499,25 +530,32 @@
         const el = document.getElementById('pass-list');
         if (!el) return;
         el.innerHTML = list.length > 0
-            ? list.map((p, i) => `
+            ? list.map((p, i) => {
+                const val = getPassValue(p);
+                const label = getPassLabel(p);
+                return `
                 <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl border border-white/5">
-                    <span class="text-sm text-white font-mono">${p}</span>
+                    <span class="text-sm text-white font-mono">${escapeHtml(val)}${label ? ` <span class="text-slate-500 font-sans">(${escapeHtml(label)})</span>` : ''}</span>
                     <button onclick="window.deletePassword(${i})" class="text-red-400 hover:text-red-300 text-xs">SİL</button>
-                </div>`).join('')
+                </div>`;
+            }).join('')
             : '<p class="text-slate-500 text-xs text-center py-2">Henüz şifre yok.</p>';
     };
 
     window.addPassword = async () => {
         const input = document.getElementById('new-pass-input');
+        const labelInput = document.getElementById('new-pass-label-input');
         const val = input.value.trim();
+        const label = labelInput ? labelInput.value.trim() : '';
         if (!val) return;
         const ref = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'passwords');
         const snap = await getDoc(ref);
         const list = snap.exists() ? (snap.data().list || []) : [];
-        if (list.includes(val)) return showModal("Hata", "Bu şifre zaten var.");
-        list.push(val);
+        if (list.some(item => getPassValue(item) === val)) return showModal("Hata", "Bu şifre zaten var.");
+        list.push(label ? { password: val, label } : { password: val, label: null });
         await setDoc(ref, { list });
         input.value = '';
+        if (labelInput) labelInput.value = '';
         window.loadPasswordList();
     };
 
@@ -566,6 +604,28 @@
                 adminList.appendChild(card);
             });
         }, (err) => console.error("Admin dinleme hatası", err));
+
+        // Uygunsuz içerik denemelerinin denetim kaydı
+        const modLogEl = document.getElementById('moderation-log-list');
+        if (modLogEl) {
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'moderation_logs'), (snap) => {
+                if (snap.empty) {
+                    modLogEl.innerHTML = '<p class="text-center text-xs text-slate-600 py-4 italic">Hiç uygunsuz içerik denemesi kaydedilmedi.</p>';
+                    return;
+                }
+                const entries = [];
+                snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
+                entries.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
+                modLogEl.innerHTML = entries.map(e => `
+                    <div class="p-3 bg-red-500/5 border border-red-500/20 rounded-xl mb-2 text-xs">
+                        <div class="flex justify-between text-slate-500 mb-1">
+                            <span>Klon: <span class="text-slate-300 font-mono">${escapeHtml(e.cloneId || '?')}</span></span>
+                            <span>${e.time ? new Date(e.time).toLocaleString('tr-TR') : ''}</span>
+                        </div>
+                        <div class="text-red-300">Denenen: ${escapeHtml(e.attemptedText || '')}</div>
+                    </div>`).join('');
+            }, (err) => console.error("Denetim kaydı dinleme hatası", err));
+        }
     }
     </script>
     <style>
@@ -649,6 +709,11 @@
                 </div>
             </div>
             <div id="admin-clone-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+            <div class="mt-8 pt-6 border-t border-white/10">
+                <h2 class="text-lg font-black text-red-500 mb-4">Uygunsuz İçerik Denemeleri</h2>
+                <div id="moderation-log-list" class="max-h-96 overflow-y-auto custom-scrollbar"></div>
+            </div>
         </div>
     </div>
 
