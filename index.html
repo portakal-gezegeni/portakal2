@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Portakal Klonu - Llama 3.3 Zekası</title>
+    <title>Portakal Klonu</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
     <script type="module">
@@ -269,9 +269,16 @@
         input.value = "";
     };
 
+    const MAX_IMAGE_SIZE_MB = 5;
+
     window.handleImageSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+            showModal("Hata", `Resim çok büyük. Lütfen ${MAX_IMAGE_SIZE_MB} MB'tan küçük bir resim seç.`);
+            e.target.value = '';
+            return;
+        }
         const reader = new FileReader();
         reader.onload = () => {
             selectedImageBase64 = reader.result.split(',')[1];
@@ -291,11 +298,15 @@
     };
 
     // ---- MİKROFON KODU ----
+    const MAX_RECORDING_SECONDS = 60;
+    let recordingTimeout = null;
+
     window.toggleMic = async () => {
         const btn = document.getElementById('mic-btn');
         const icon = document.getElementById('mic-icon');
 
         if (isRecording) {
+            if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
             mediaRecorder.requestData();
             mediaRecorder.stop();
             isRecording = false;
@@ -321,6 +332,7 @@
             };
 
             mediaRecorder.onstop = async () => {
+                if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
                 stream.getTracks().forEach(t => t.stop());
 
                 if (audioChunks.length === 0) {
@@ -366,6 +378,16 @@
             isRecording = true;
             btn.classList.add('recording');
             icon.setAttribute('class', 'fa-solid fa-microphone-slash');
+
+            recordingTimeout = setTimeout(() => {
+                if (isRecording && mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.requestData();
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    btn.classList.remove('recording');
+                    icon.setAttribute('class', 'fa-solid fa-microphone');
+                }
+            }, MAX_RECORDING_SECONDS * 1000);
 
         } catch (e) {
             if (e.name === 'NotAllowedError') {
@@ -568,41 +590,95 @@
         window.loadPasswordList();
     };
 
-    function startAdminListener() {
+    let allCloneDocs = [];
+
+    function renderCloneList() {
         const adminList = document.getElementById('admin-clone-list');
-        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'clones'), (snap) => {
-            adminList.innerHTML = "";
-            if (snap.empty) {
-                adminList.innerHTML = '<div class="text-slate-500 text-center p-10">Henüz hiç klon yok.</div>';
-                return;
-            }
-            snap.forEach(d => {
-                const data = d.data();
-                const cloneMemories = data.list || [];
-                const card = document.createElement('div');
-                card.className = "bg-white/5 border border-white/10 p-5 rounded-[2rem] mb-6 animate-fadeIn";
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <h3 class="text-orange-500 font-black text-xl tracking-tight">#${escapeHtml(d.id)}</h3>
-                            <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Klon Hafızası</p>
-                        </div>
-                        <button onclick="window.deleteClone('${encodeURIComponent(d.id)}')" class="px-4 py-2 bg-red-600/10 text-red-500 text-xs rounded-xl font-bold border border-red-500/20 hover:bg-red-600 hover:text-white transition-all">
-                            <i class="fa-solid fa-trash-can mr-2"></i>KLONU SİL
+        const searchInput = document.getElementById('clone-search-input');
+        const filterText = searchInput ? searchInput.value.trim().toLocaleLowerCase('tr-TR') : '';
+
+        const filtered = filterText
+            ? allCloneDocs.filter(d => d.id.toLocaleLowerCase('tr-TR').includes(filterText))
+            : allCloneDocs;
+
+        adminList.innerHTML = "";
+        if (allCloneDocs.length === 0) {
+            adminList.innerHTML = '<div class="text-slate-500 text-center p-10">Henüz hiç klon yok.</div>';
+            return;
+        }
+        if (filtered.length === 0) {
+            adminList.innerHTML = '<div class="text-slate-500 text-center p-10">Aramayla eşleşen klon bulunamadı.</div>';
+            return;
+        }
+
+        filtered.forEach(d => {
+            const cloneMemories = d.data.list || [];
+            const card = document.createElement('div');
+            card.className = "bg-white/5 border border-white/10 p-5 rounded-[2rem] mb-6 animate-fadeIn";
+            card.innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="text-orange-500 font-black text-xl tracking-tight">#${escapeHtml(d.id)}</h3>
+                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Klon Hafızası</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.resetClone('${encodeURIComponent(d.id)}')" class="px-3 py-2 bg-yellow-600/10 text-yellow-500 text-xs rounded-xl font-bold border border-yellow-500/20 hover:bg-yellow-600 hover:text-white transition-all">
+                            <i class="fa-solid fa-rotate-left mr-1"></i>SIFIRLA
+                        </button>
+                        <button onclick="window.deleteClone('${encodeURIComponent(d.id)}')" class="px-3 py-2 bg-red-600/10 text-red-500 text-xs rounded-xl font-bold border border-red-500/20 hover:bg-red-600 hover:text-white transition-all">
+                            <i class="fa-solid fa-trash-can mr-1"></i>SİL
                         </button>
                     </div>
-                    <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">Hafıza Verileri (${cloneMemories.length})</p>
-                    <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2 mb-4">
-                        ${cloneMemories.length > 0 ? cloneMemories.map((m, idx) => `
-                            <div class="flex justify-between items-center gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                                <span class="text-xs text-slate-300 flex-grow">${escapeHtml(m)}</span>
-                                <button onclick="window.deleteMemoryItem('${encodeURIComponent(d.id)}', ${idx})" class="text-slate-500 hover:text-red-400 transition-colors">
-                                    <i class="fa-solid fa-xmark"></i>
-                                </button>
-                            </div>`).join('') : '<p class="text-center text-xs text-slate-600 py-2 italic">Hafıza boş.</p>'}
-                    </div>`;
-                adminList.appendChild(card);
-            });
+                </div>
+                <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-2">Hafıza Verileri (${cloneMemories.length})</p>
+                <div class="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2 mb-4">
+                    ${cloneMemories.length > 0 ? cloneMemories.map((m, idx) => `
+                        <div class="flex justify-between items-center gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
+                            <span class="text-xs text-slate-300 flex-grow">${escapeHtml(m)}</span>
+                            <button onclick="window.deleteMemoryItem('${encodeURIComponent(d.id)}', ${idx})" class="text-slate-500 hover:text-red-400 transition-colors">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>`).join('') : '<p class="text-center text-xs text-slate-600 py-2 italic">Hafıza boş.</p>'}
+                </div>`;
+            adminList.appendChild(card);
+        });
+    }
+
+    window.filterCloneList = () => renderCloneList();
+
+    window.resetClone = async (encodedId) => {
+        if (!encodedId) return;
+        const id = decodeURIComponent(encodedId);
+        const modal = document.createElement('div');
+        modal.className = "fixed inset-0 z-[6000] flex items-center justify-center bg-black/90 p-4";
+        modal.innerHTML = `
+            <div class="bg-slate-900 p-6 rounded-2xl max-w-xs w-full text-center border border-yellow-500/30">
+                <h3 class="text-yellow-500 font-bold mb-2">Hafızayı Sıfırla</h3>
+                <p class="text-xs text-slate-300 mb-4"><span class="font-bold text-white">${escapeHtml(id)}</span> klonunun hafızası ve sohbet geçmişi silinecek, ama şifre/erişim korunacak.</p>
+                <div class="flex gap-2">
+                    <button id="cancel-reset-btn" class="w-1/2 py-2 bg-slate-800 rounded-xl text-white font-bold text-sm">İPTAL</button>
+                    <button id="confirm-reset-btn" class="w-1/2 py-2 bg-yellow-600 rounded-xl text-white font-bold text-sm">SIFIRLA</button>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        document.getElementById('cancel-reset-btn').onclick = () => modal.remove();
+        document.getElementById('confirm-reset-btn').onclick = async () => {
+            modal.remove();
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'clones', id);
+                await updateDoc(docRef, { list: [], messages: [] });
+                showModal("Başarılı", "Klonun hafızası sıfırlandı.");
+            } catch (e) {
+                showModal("Hata", "Sıfırlama başarısız oldu.");
+            }
+        };
+    };
+
+    function startAdminListener() {
+        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'clones'), (snap) => {
+            allCloneDocs = [];
+            snap.forEach(d => allCloneDocs.push({ id: d.id, data: d.data() }));
+            renderCloneList();
         }, (err) => console.error("Admin dinleme hatası", err));
 
         // Uygunsuz içerik denemelerinin denetim kaydı
@@ -708,6 +784,7 @@
                     <button onclick="logout()" class="px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs">ÇIKIŞ</button>
                 </div>
             </div>
+            <input type="text" id="clone-search-input" placeholder="Şifre veya isme göre ara..." class="w-full bg-white/5 p-3 rounded-xl border border-white/10 text-white text-sm outline-none mb-4" oninput="window.filterCloneList()">
             <div id="admin-clone-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
 
             <div class="mt-8 pt-6 border-t border-white/10">
@@ -733,7 +810,7 @@
                 </div>
             </div>
             <h1 class="text-4xl font-black mb-2 tracking-tighter">KLON SİSTEMİ</h1>
-            <p class="text-slate-400 mb-8 text-sm">Bir şifre gir ve klonunu Llama 3 ile eğit.</p>
+            <p class="text-slate-400 mb-8 text-sm">Bir şifre gir ve klonunu eğitmeye başla.</p>
             <div class="space-y-3">
                 <input type="password" id="secretKey" placeholder="Hafıza Şifresi"
                     class="w-full bg-white/5 p-4 rounded-2xl border border-white/10 text-center text-xl tracking-[0.5em] outline-none text-white focus:border-orange-500"
